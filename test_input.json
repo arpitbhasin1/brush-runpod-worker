@@ -1,0 +1,7 @@
+{
+  "input": {
+    "job_id": "local-test",
+    "bundle_url": "https://REPLACE-ME.example.com/colmap_bundle.zip",
+    "preset": "fast"
+  }
+}
