@@ -32,6 +32,7 @@ import os
 import subprocess
 import tempfile
 import time
+from collections import deque
 from pathlib import Path
 
 import requests
@@ -72,15 +73,32 @@ def _train(bundle_zip: Path, out_dir: Path, total_steps: int, max_resolution: in
         str(max_resolution),
     ]
     print(f"[brush] {' '.join(cmd)}", flush=True)
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    if proc.returncode != 0:
+    # Stream stdout+stderr line-by-line so RunPod logs show adapter selection
+    # and training progress in real time (capture_output buffers in memory and
+    # loses everything if the worker is killed mid-run).
+    tail: deque[str] = deque(maxlen=200)
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    assert proc.stdout is not None
+    for raw_line in proc.stdout:
+        line = raw_line.rstrip()
+        print(f"[brush] {line}", flush=True)
+        tail.append(line)
+    returncode = proc.wait()
+    if returncode != 0:
         raise RuntimeError(
-            f"Brush failed (code {proc.returncode})\n"
-            f"STDOUT:\n{proc.stdout[-4000:]}\nSTDERR:\n{proc.stderr[-4000:]}"
+            f"Brush failed (code {returncode})\nLast output:\n" + "\n".join(tail)
         )
     ply = out_dir / "output.ply"
     if not ply.exists():
-        raise RuntimeError(f"Brush finished but {ply} is missing.\nSTDOUT:\n{proc.stdout[-4000:]}")
+        raise RuntimeError(
+            f"Brush finished but {ply} is missing.\nLast output:\n" + "\n".join(tail)
+        )
     return ply
 
 
