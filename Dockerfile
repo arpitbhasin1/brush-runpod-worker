@@ -29,7 +29,10 @@ RUN wget -q https://github.com/ArthurBrussee/brush/releases/download/v0.3.0/brus
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# --ignore-installed: the base image ships apt-installed Python packages
+# (e.g. cryptography 41.0.7) that pip cannot uninstall (no RECORD file).
+# Install fresh copies into site-packages instead of upgrading in place.
+RUN pip install --no-cache-dir --ignore-installed -r requirements.txt
 
 COPY handler.py test_input.json ./
 
