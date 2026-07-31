@@ -84,13 +84,19 @@ def _train(bundle_zip: Path, out_dir: Path, total_steps: int, max_resolution: in
     return ply
 
 
-def _emit_ply(ply: Path, output: dict) -> None:
+def _emit_ply(ply: Path, output: dict, job_id: str) -> None:
     """Attach the PLY as a bucket URL (preferred) or inline base64."""
     if os.environ.get("BUCKET_ENDPOINT_URL"):
         from runpod.serverless.utils import rp_upload
 
+        # BUCKET_NAME is required: without it the SDK defaults the bucket to
+        # time.strftime("%m-%y"), which does not exist. prefix keeps jobs from
+        # overwriting each other's output.ply.
         output["ply_url"] = rp_upload.upload_file_to_bucket(
-            file_name=ply.name, file_location=str(ply)
+            file_name=ply.name,
+            file_location=str(ply),
+            bucket_name=os.environ["BUCKET_NAME"],
+            prefix=job_id,
         )
         return
     data = ply.read_bytes()
@@ -108,6 +114,7 @@ def handler(job: dict) -> dict:
     bundle_url = inp.get("bundle_url")
     if not bundle_url:
         return {"success": False, "error": "Missing required field: bundle_url", "metrics": {}}
+    job_id = str(inp.get("job_id") or job.get("id") or "job")
 
     preset = PRESETS.get(str(inp.get("preset") or "quality"), PRESETS["quality"])
     total_steps = int(inp.get("iterations") or preset["total_steps"])
@@ -144,7 +151,7 @@ def handler(job: dict) -> dict:
                     "train_time_sec": round(time.time() - t0, 1),
                 },
             }
-            _emit_ply(ply, output)
+            _emit_ply(ply, output, job_id)
             return output
     except Exception as e:
         return {
